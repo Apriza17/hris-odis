@@ -31,7 +31,38 @@ class AttendanceController extends Controller
 
     public function store(Request $request)
     {
+        $request->validate([
+            'latitude' => 'required',
+            'longitude' => 'required',
+        ]);
+
         $user = Auth::user();
+        $company = $user->company; // Ambil settingan kantor
+
+        // 1. Cek Apakah Kantor Punya Koordinat?
+        if ($company->latitude && $company->longitude) {
+
+            // Rumus Haversine (Hitung Jarak dalam Meter)
+            $earthRadius = 6371000; // Radius bumi dalam meter
+
+            $latFrom = deg2rad($company->latitude);
+            $lonFrom = deg2rad($company->longitude);
+            $latTo = deg2rad($request->latitude);
+            $lonTo = deg2rad($request->longitude);
+
+            $latDelta = $latTo - $latFrom;
+            $lonDelta = $lonTo - $lonFrom;
+
+            $angle = 2 * asin(sqrt(pow(sin($latDelta / 2), 2) +
+                cos($latFrom) * cos($latTo) * pow(sin($lonDelta / 2), 2)));
+
+            $distance = $angle * $earthRadius; // Hasil dalam Meter
+
+            // 2. Validasi Jarak
+            if ($distance > $company->radius_km) {
+                return redirect()->back()->with('error', 'Posisi Anda Terlalu Jauh dari Kantor! Jarak: ' . number_format($distance) . ' meter.');
+            }
+        }
         $employee = $user->employee;
         $today = Carbon::today()->format('Y-m-d');
         $now = Carbon::now();
@@ -42,25 +73,57 @@ class AttendanceController extends Controller
                                 ->first();
 
         if (!$attendance) {
-            // === ABSEN MASUK (CLOCK IN) ===
-            Attendance::create([
-                'company_id' => $user->company_id,
-                'employee_id' => $employee->id,
-                'date' => $today,
-                'time_in' => $now->format('H:i:s'),
-                'status' => 'present', // Nanti kita tambah logic "Telat" disini
-                // Lokasi nanti kita ambil dari Request (sementara null dulu)
-            ]);
+        // === ABSEN MASUK (CLOCK IN) ===
 
-            return redirect()->back()->with('success', 'Berhasil Absen Masuk! Semangat kerja 💪');
+        // A. Tentukan Status (Hadir / Telat)
+        $scheduleTime = Carbon::createFromFormat('H:i:s', $company->time_in); // Misal 09:00:00
+        $arrivalTime = Carbon::now();
 
-        } else {
-            // === ABSEN PULANG (CLOCK OUT) ===
-            $attendance->update([
-                'time_out' => $now->format('H:i:s'),
-            ]);
+        // Default status hadir
+        $status = 'present';
+        $note = null;
 
-            return redirect()->back()->with('success', 'Berhasil Absen Pulang! Hati-hati di jalan 👋');
+        // Logic: Kalau jam datang LEBIH DARI jam jadwal -> TELAT
+        // Kita kasih toleransi 1 menit biar gak sadis-sadis amat
+        if ($arrivalTime->gt($scheduleTime->addMinute())) {
+            $status = 'late';
+
+            // Hitung telat berapa menit (Opsional, buat info)
+            $lateMinutes = $arrivalTime->diffInMinutes($scheduleTime);
+            $note = 'Terlambat ' . $lateMinutes . ' menit';
         }
+
+        Attendance::create([
+            'company_id' => $user->company_id,
+            'employee_id' => $employee->id,
+            'date' => $today,
+            'time_in' => $now->format('H:i:s'),
+            'status' => $status, // <--- Pakai variabel dinamis ini
+            'note' => $note,     // <--- Simpan catatan telatnya
+            'lat_in' => $request->latitude,
+            'long_in' => $request->longitude,
+        ]);
+
+        // Ubah pesan notifikasi biar lebih informatif
+        if ($status == 'late') {
+            return redirect()->back()->with('warning', 'Absen Masuk Berhasil, tapi Anda Terlambat! 😅');
+        } else {
+            return redirect()->back()->with('success', 'Absen Masuk Berhasil! Tepat Waktu. 🔥');
+        }
+    } else {
+        // === ABSEN KELUAR (CLOCK OUT) ===
+        // Cek sudah absen keluar atau belum
+        if ($attendance->time_out) {
+            return redirect()->back()->with('info', 'Anda Sudah Absen Keluar Hari Ini.');
+        }
+
+        $attendance->update([
+            'time_out' => $now->format('H:i:s'),
+            'lat_out' => $request->latitude,
+            'long_out' => $request->longitude,
+        ]);
+
+        return redirect()->back()->with('success', 'Absen Keluar Berhasil! Sampai Jumpa Besok. 👋');
     }
+}
 }

@@ -59,14 +59,25 @@ class PayrollController extends Controller
 
                 if ($exists) continue; // Skip kalau sudah ada
 
-                // 3. Hitung Gaji (Logic Sederhana Dulu)
-                // Nanti bisa dikembangkan hitung potongan terlambat dari tabel Attendance
+               // === LOGIC BARU: HITUNG OTOMATIS ===
+
+                // 1. Gaji Pokok
                 $basic = $emp->basic_salary;
-                $allowance = 0; // Sementara 0
-                $deduction = 0; // Sementara 0 (Potongan BPJS/Telat nanti disini)
+
+                // 2. Hitung Total Tunjangan (Allowance)
+                $allowance = $emp->components
+                    ->where('component.type', 'allowance')
+                    ->sum('amount');
+
+                // 3. Hitung Total Potongan (Deduction)
+                $deduction = $emp->components
+                    ->where('component.type', 'deduction')
+                    ->sum('amount');
+
+                // 4. Hitung Bersih
                 $net = $basic + $allowance - $deduction;
 
-                // 4. Simpan ke Tabel Payroll
+                // Simpan
                 Payroll::create([
                     'company_id' => $companyId,
                     'employee_id' => $emp->id,
@@ -74,15 +85,15 @@ class PayrollController extends Controller
                     'year' => $currentYear,
                     'pay_date' => Carbon::now(),
                     'basic_salary' => $basic,
-                    'allowances' => $allowance,
-                    'deductions' => $deduction,
+                    'allowances' => $allowance, // Otomatis terisi 700rb (500+200)
+                    'deductions' => $deduction, // Otomatis terisi 100rb
                     'net_salary' => $net,
-                    'status' => 'paid' // Anggap langsung cair
+                    'status' => 'paid'
                 ]);
             }
         });
 
-        return redirect()->back()->with('success', 'Payroll bulan ' . $currentMonth . ' berhasil digenerate!');
+        return redirect()->back()->with('success', 'Payroll berhasil digenerate dengan kalkulasi otomatis!');
     }
 
     // Tambahkan use di paling atas

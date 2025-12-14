@@ -7,7 +7,10 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Company extends Model
 {
-    protected $guarded = ['id'];
+    protected $fillable = [
+    'name', 'email', 'phone', 'address', 'logo', 'code',
+    'latitude', 'longitude', 'radius_km', 'time_in', 'time_out' // Tambahkan ini
+    ];
 
     public function users(): HasMany
     {

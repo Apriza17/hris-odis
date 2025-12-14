@@ -6,42 +6,48 @@ use App\Http\Controllers\EmployeeController;
 use App\Http\Controllers\AttendanceController;
 use App\Http\Controllers\LeaveController;
 use App\Http\Controllers\PayrollController;
+use App\Http\Controllers\CompanyController;
+use App\Http\Controllers\PayrollComponentController;
+use App\Http\Controllers\DashboardController;
 
 Route::get('/', function () {
     return view('welcome');
 });
 
-Route::get('/dashboard', function () {
-    return view('dashboard');
-})->middleware(['auth', 'verified'])->name('dashboard');
+Route::middleware(['auth', 'verified'])->group(function () {
 
-Route::middleware('auth')->group(function () {
-    Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
-    Route::patch('/profile', [ProfileController::class, 'update'])->name('profile.update');
-    Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
+    // === AREA PUBLIK (Semua Karyawan Bisa Akses) ===
+    Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
+    Route::resource('leaves', LeaveController::class); // Karyawan butuh ini buat request
+
+    // Absensi
     Route::get('/attendance', [AttendanceController::class, 'index'])->name('attendance.index');
     Route::post('/attendance', [AttendanceController::class, 'store'])->name('attendance.store');
-    Route::resource('leaves', LeaveController::class);
 
-    // ROUTE BARU: Approval Cuti (Method PATCH)
-    Route::patch('/leaves/{id}/approval', [LeaveController::class, 'approval'])->name('leaves.approval');
-
+    // Payroll (Index boleh diakses karyawan buat lihat slip sendiri)
     Route::get('/payrolls', [PayrollController::class, 'index'])->name('payrolls.index');
-
-    // Tombol Sakti Generate
-    Route::post('/payrolls/generate', [PayrollController::class, 'generate'])->name('payrolls.generate');
-
-    // Tambahkan di dalam group auth
     Route::get('/payrolls/{id}/slip', [PayrollController::class, 'downloadSlip'])->name('payrolls.download');
 
-});
 
+    // === AREA TERLARANG (Khusus Admin / Super Admin) ===
+    Route::middleware(['role:admin,super_admin'])->group(function () {
 
-Route::middleware(['auth', 'verified'])->group(function () {
-    // ... route dashboard yang lama biarkan saja ...
+        // Master Data Karyawan
+        Route::resource('employees', EmployeeController::class);
 
-    // Route Karyawan
-    Route::resource('employees', EmployeeController::class);
+        // Master Komponen Gaji
+        Route::resource('payroll-components', PayrollComponentController::class);
+
+        // Fitur Generate Payroll & Approval Cuti
+        Route::post('/payrolls/generate', [PayrollController::class, 'generate'])->name('payrolls.generate');
+        Route::patch('/leaves/{id}/approval', [LeaveController::class, 'approval'])->name('leaves.approval');
+
+        // Pengaturan Kantor
+        Route::get('/settings', [CompanyController::class, 'edit'])->name('company.edit');
+        Route::put('/settings', [CompanyController::class, 'update'])->name('company.update');
+
+    });
+
 });
 
 require __DIR__.'/auth.php';

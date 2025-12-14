@@ -28,4 +28,9 @@ class Employee extends Model
     {
         return $this->belongsTo(Position::class);
     }
+    // Tambahkan relasi ini
+    public function components()
+    {
+        return $this->hasMany(EmployeeComponent::class);
+    }
 }

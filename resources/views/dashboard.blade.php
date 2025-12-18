@@ -16,25 +16,31 @@
                         <div class="flex justify-between items-start">
                             <div>
                                 <p class="text-sm text-gray-500 dark:text-gray-400 mb-1">Status Hari Ini</p>
+
                                 @if($todayAttendance)
                                     <h3 class="text-2xl font-bold text-green-600">SUDAH HADIR</h3>
                                     <p class="text-xs text-gray-500 mt-1">Masuk: {{ $todayAttendance->time_in }}</p>
-                                    @if($todayAttendance->time_out)
-                                        <p class="text-xs text-gray-500">Pulang: {{ $todayAttendance->time_out }}</p>
-                                    @else
-                                        <p class="text-xs text-blue-500 font-semibold animate-pulse">Sedang Bekerja...</p>
-                                    @endif
+
+                                @elseif(\Carbon\Carbon::now()->format('H:i:s') > Auth::user()->company->time_out)
+                                    <h3 class="text-2xl font-bold text-red-600">TIDAK HADIR</h3>
+                                    <p class="text-xs text-red-500 mt-1">Anda melewati batas jam kerja.</p>
+
                                 @else
                                     <h3 class="text-2xl font-bold text-gray-400">BELUM ABSEN</h3>
                                     <p class="text-xs text-gray-500 mt-1">Jangan lupa clock-in ya!</p>
                                 @endif
                             </div>
-                            <div class="p-3 {{ $todayAttendance ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-500' }} rounded-full">
-                                <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+
+                            <div class="p-3 rounded-full {{ $todayAttendance ? 'bg-green-100 text-green-600' : (\Carbon\Carbon::now()->format('H:i:s') > Auth::user()->company->time_out ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-500') }}">
+                                @if(\Carbon\Carbon::now()->format('H:i:s') > Auth::user()->company->time_out && !$todayAttendance)
+                                    <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                                @else
+                                    <svg class="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                @endif
                             </div>
                         </div>
 
-                        @if(!$todayAttendance || !$todayAttendance->time_out)
+                        @if((!$todayAttendance || !$todayAttendance->time_out) && \Carbon\Carbon::now()->format('H:i:s') <= Auth::user()->company->time_out)
                         <div class="mt-4">
                             <a href="{{ route('attendance.index') }}" class="block w-full text-center py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-medium transition">
                                 {{ !$todayAttendance ? 'Absen Masuk Sekarang' : 'Absen Pulang' }}
@@ -180,33 +186,46 @@
 
                 <div class="bg-white dark:bg-gray-800 overflow-hidden shadow-sm sm:rounded-lg p-6">
                     <h3 class="text-lg font-bold text-gray-800 dark:text-white mb-4 flex items-center gap-2">
-                        <span class="w-2 h-2 bg-red-500 rounded-full"></span>
-                        Terlambat Hari Ini
+                        <span class="w-2 h-2 bg-red-500 rounded-full animate-pulse"></span>
+                        Monitoring Kehadiran (Telat & Alpha)
                     </h3>
 
-                    @if(isset($lateEmployees) && count($lateEmployees) > 0)
+                    @if(isset($todaysIssues) && count($todaysIssues) > 0)
                         <ul class="space-y-3">
-                            @foreach($lateEmployees as $attendance)
+                            @foreach($todaysIssues as $issue)
                                 <li class="flex items-center justify-between border-b pb-2 dark:border-gray-700 last:border-0">
                                     <div class="flex items-center gap-3">
-                                        <div class="w-8 h-8 rounded-full bg-red-100 text-red-600 flex items-center justify-center font-bold text-xs">
-                                            {{ substr($attendance->employee->user->name, 0, 2) }}
+                                        <div class="w-8 h-8 rounded-full {{ $issue['type'] == 'late' ? 'bg-yellow-100 text-yellow-600' : 'bg-red-100 text-red-600' }} flex items-center justify-center font-bold text-xs">
+                                            {{ substr($issue['name'], 0, 2) }}
                                         </div>
                                         <div>
-                                            <p class="text-sm font-medium text-gray-900 dark:text-white">{{ $attendance->employee->user->name }}</p>
-                                            <p class="text-xs text-gray-500">Masuk: {{ $attendance->time_in }}</p>
+                                            <p class="text-sm font-medium text-gray-900 dark:text-white">{{ $issue['name'] }}</p>
+                                            <p class="text-xs text-gray-500">
+                                                @if($issue['type'] == 'late')
+                                                    Masuk: {{ $issue['time'] }}
+                                                @else
+                                                    Tidak ada kabar
+                                                @endif
+                                            </p>
                                         </div>
                                     </div>
-                                    <span class="text-xs text-red-500 font-semibold bg-red-50 px-2 py-1 rounded">
-                                        Telat
-                                    </span>
+
+                                    @if($issue['type'] == 'late')
+                                        <span class="text-xs text-yellow-600 font-semibold bg-yellow-50 px-2 py-1 rounded border border-yellow-200">
+                                            Telat
+                                        </span>
+                                    @else
+                                        <span class="text-xs text-red-600 font-bold bg-red-50 px-2 py-1 rounded border border-red-200">
+                                            Alpha
+                                        </span>
+                                    @endif
                                 </li>
                             @endforeach
                         </ul>
                     @else
                         <div class="flex flex-col items-center justify-center py-6 text-center">
                             <svg class="w-12 h-12 text-green-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
-                            <p class="text-sm text-gray-500">Mantap! Tidak ada yang terlambat hari ini.</p>
+                            <p class="text-sm text-gray-500">Luar biasa! Semua hadir tepat waktu.</p>
                         </div>
                     @endif
                 </div>

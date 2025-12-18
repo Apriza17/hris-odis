@@ -9,6 +9,9 @@ use App\Models\Employee;
 use App\Models\Attendance;
 use App\Models\Leave;
 use App\Models\Payroll;
+use App\Models\Company;
+use App\Models\User;
+
 
 class DashboardController extends Controller
 {
@@ -21,6 +24,17 @@ class DashboardController extends Controller
         $currentYear = Carbon::now()->year;
 
         // === KHUSUS SUPER ADMIN (CEO ORCA) ===
+        if ($user->role === 'super_admin') {
+
+        // Statistik Global
+        $totalCompanies = Company::count();
+        $totalUsers = User::count(); // Total semua user di database
+
+        // List Perusahaan Terbaru
+        $companies = Company::withCount('employees')->latest()->paginate(10);
+
+        return view('dashboard_superadmin', compact('totalCompanies', 'totalUsers', 'companies'));
+        }
         // Kalau super admin, kembalikan view khusus (nanti bisa dikembangkan).
         // Untuk user selain super_admin, lanjutkan dan tampilkan data perusahaan.
         if ($user->role === 'employee') {
@@ -53,7 +67,7 @@ class DashboardController extends Controller
             return view('dashboard', compact('todayAttendance', 'leaveBalance', 'recentHistory', 'lastPayslip'));
         }
 
-        // === KHUSUS HRD & KARYAWAN ===
+        // === KHUSUS HRD  ===
 
         // 1. Total Karyawan
         $totalEmployees = Employee::where('company_id', $companyId)->count();
@@ -75,19 +89,57 @@ class DashboardController extends Controller
             ->sum('basic_salary');
 
         // 5. Daftar Karyawan Terlambat Hari Ini (Buat dimarahin HRD hehe)
+        // A. Ambil yang TELAT (Data dari Attendance)
         $lateEmployees = Attendance::with('employee.user')
             ->where('company_id', $companyId)
             ->where('date', $today)
             ->where('status', 'late')
-            ->limit(5)
             ->get();
 
+        // B. Ambil yang ALPHA (Karyawan yg TIDAK ada di Attendance hari ini)
+        // Kita pakai whereDoesntHave
+        $alphaEmployees = Employee::with('user')
+            ->where('company_id', $companyId)
+            ->where('status', '!=', 'internship') // Skip anak magang
+            ->whereDoesntHave('attendances', function($q) use($today) {
+                $q->where('date', $today);
+            })
+            ->get();
+
+        // C. GABUNGKAN DATA (Custom Collection)
+        $attendanceIssues = collect();
+
+        // Masukkan yang Telat
+        foreach($lateEmployees as $late) {
+            $attendanceIssues->push([
+                'type' => 'late',
+                'name' => $late->employee->user->name,
+                'time' => $late->time_in,
+                'status_label' => 'Telat'
+            ]);
+        }
+
+        // Masukkan yang Alpha
+        foreach($alphaEmployees as $alpha) {
+            $attendanceIssues->push([
+                'type' => 'alpha',
+                'name' => $alpha->user->name,
+                'time' => '-',
+                'status_label' => 'Alpha'
+            ]);
+        }
+
+        // Ambil 5 teratas saja buat di dashboard
+        $todaysIssues = $attendanceIssues->take(5);
+
+        // Jangan lupa update return view-nya, ganti variabel $lateEmployees jadi $todaysIssues
         return view('dashboard', compact(
             'totalEmployees',
             'presentCount',
             'pendingLeaves',
             'totalBasicSalary',
-            'lateEmployees'
+            'todaysIssues' // <--- Ganti nama variabel ini
         ));
+
     }
 }

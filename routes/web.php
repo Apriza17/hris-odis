@@ -9,6 +9,9 @@ use App\Http\Controllers\PayrollController;
 use App\Http\Controllers\CompanyController;
 use App\Http\Controllers\PayrollComponentController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\DepartmentController;
+use App\Http\Controllers\PositionController;
+use App\Http\Controllers\TenantController;
 
 Route::get('/', function () {
     return view('welcome');
@@ -30,7 +33,13 @@ Route::middleware(['auth', 'verified'])->group(function () {
 
 
     // === AREA TERLARANG (Khusus Admin / Super Admin) ===
-    Route::middleware(['role:admin,super_admin'])->group(function () {
+    Route::middleware(['role:admin'])->group(function () {
+
+        // Master Data Departemen & Jabatan
+        // Departemen (Utama)
+        Route::resource('departments', DepartmentController::class)->only(['index', 'store', 'destroy']);
+        // Jabatan (Numpang Store & Destroy)
+        Route::resource('positions', PositionController::class)->only(['store', 'destroy']);
 
         // Master Data Karyawan
         Route::resource('employees', EmployeeController::class);
@@ -46,8 +55,23 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/settings', [CompanyController::class, 'edit'])->name('company.edit');
         Route::put('/settings', [CompanyController::class, 'update'])->name('company.update');
 
+        // Rekap Absensi Karyawan
+        Route::get('/attendance/recap', [AttendanceController::class, 'recap'])->name('attendance.recap');
+
     });
 
+
+});
+Route::middleware(['role:super_admin'])->group(function () {
+    // ... route lain ...
+
+    // Manajemen Tenant (Client)
+    Route::get('/tenants/create', [TenantController::class, 'create'])->name('tenants.create');
+    Route::post('/tenants', [TenantController::class, 'store'])->name('tenants.store');
+    Route::get('/tenants/{id}', [TenantController::class, 'show'])->name('tenants.show');
+
+    // Login As (Pakai POST demi keamanan, jangan GET)
+    Route::post('/tenants/{id}/impersonate', [TenantController::class, 'impersonate'])->name('tenants.impersonate');
 });
 
 require __DIR__.'/auth.php';

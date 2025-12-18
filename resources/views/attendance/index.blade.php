@@ -163,7 +163,7 @@
 
         function showPosition(position) {
             // Debugging: Munculkan koordinat yang didapat browser
-            // alert("Posisi Terdeteksi:\nLat: " + position.coords.latitude + "\nLong: " + position.coords.longitude);
+            alert("Posisi Terdeteksi:\nLat: " + position.coords.latitude + "\nLong: " + position.coords.longitude);
 
             // 1. Isi input hidden dengan koordinat
             document.getElementById('lat').value = position.coords.latitude;
